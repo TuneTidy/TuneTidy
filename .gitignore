@@ -1,0 +1,40 @@
+# TuneTidy keeps settings, keys and caches in %APPDATA%\TuneTidy - never in this folder.
+# These rules stop personal files from being committed by accident anyway.
+
+# Settings, keys, caches
+Settings.json
+ApiKeys.json
+ApiKeys.xml
+TagCache.json
+GenreCache*.json
+GenreDictionary.json
+GenreRules.json
+
+# Library data (decisions, history, plans, logs, playlists)
+_TuneTidy/
+_Organizer/
+_Organizer-old/
+_Playlists/
+Decisions*.csv
+Processed.csv
+Plan.csv
+Duplicates.csv
+Genre-Log-*.csv
+Genre-Matching-Log-*.csv
+*.m3u8
+
+# Rekordbox exports contain your file paths
+export.xml
+rekordbox*.xml
+
+# Temporary and test output
+*.tmp
+testResults.xml
+TestResults/
+
+# Editors and operating systems
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
