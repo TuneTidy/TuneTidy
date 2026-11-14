@@ -22,17 +22,21 @@ Input today: a Rekordbox XML export. Everything after STEP 3 works on a plain tr
 added later as extra input functions without touching the rest.
 
 .PARAMETER XmlPath
-Path to a Rekordbox XML export (File > Export Collection in xml format). If omitted, the last
-used export is offered, or you are asked.
+Path to a Rekordbox XML export (File > Export Collection in xml format). If omitted, you pick
+one from your recent exports or browse for it.
 
 .PARAMETER Mode
-'Initial' = whole collection, 'New' = only tracks inside your new-tracks folder(s).
-If omitted, a menu is shown.
+'Initial' = whole collection, 'New' = only tracks inside your new-tracks folder(s),
+'Playlist' = only the tracks in one or more playlists. If omitted, a menu is shown.
+
+.PARAMETER Playlist
+One or more playlist names from the export, for example "#latestmix" or "Gigs/Club X" (folder
+path with /). Implies -Mode Playlist. Without it, playlist mode uses your last choice.
 
 .PARAMETER Unattended
-Runs with saved settings and asks nothing (for a scheduled task). Defaults to Mode 'New'.
-Genre suggestions found online are NOT applied - they wait for your next normal run.
-Earlier copies are not moved.
+Runs with saved settings and asks nothing (for a scheduled task). Uses the last export and the
+last mode (or 'New'). Genre suggestions found online are NOT applied - they wait for your next
+normal run. Earlier copies are not moved.
 
 .PARAMETER WhatIf
 Preview only: shows what would be copied, moved and written, but changes no music files.
@@ -44,6 +48,10 @@ Interactive run with menus.
 .EXAMPLE
 .\TuneTidy.ps1 -Mode New -Unattended
 Copies new tracks from your new-tracks folder(s) without asking anything.
+
+.EXAMPLE
+.\TuneTidy.ps1 -Playlist "#latestmix" -Unattended
+Sorts the tracks of one playlist without asking anything.
 
 .EXAMPLE
 .\TuneTidy.ps1 -WhatIf
@@ -62,8 +70,9 @@ https://github.com/Tunetidy/Tunetidy
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string]$XmlPath,
-    [ValidateSet('Initial', 'New')]
+    [ValidateSet('Initial', 'New', 'Playlist')]
     [string]$Mode,
+    [string[]]$Playlist,
     [switch]$Unattended
 )
 
@@ -103,16 +112,17 @@ $EnvDiscogs = 'TUNETIDY_DISCOGS_TOKEN'
 $EnvLastFm  = 'TUNETIDY_LASTFM_KEY'
 
 # YouTube / label channels that appear in the Artist field. They are never treated as artists.
+# Names ending in Records, Music, TV, Nation, Official ... are caught by $ChannelPattern anyway.
 # Your own list lives in Settings.json (ChannelNames) and starts as a copy of this one.
 $DefaultChannelNames = @(
-    'Liquicity', 'UKF', 'UKF Drum & Bass', 'UKF Dubstep', 'DnB Allstars', 'Drum&BassArena',
-    'DrumAndBassArena', 'On Scope', 'DnB Ranger', 'Mentalo Music', 'Monstercat', 'Trap Nation',
-    'Bass Nation', 'Chill Nation', 'Proximity', 'MrSuicideSheep', 'Majestic Casual', 'Selected',
-    'NoCopyrightSounds', 'NCS', 'Arctic Empire', 'Lowly Palace', 'Mixmag', 'Boiler Room',
-    'Hospital Records', 'RAM Records', 'Shogun Audio', 'Viper Recordings', 'Critical Music',
-    'Metalheadz', 'Blackout Music', 'Elevate Records', 'Lifted Music', 'WeRave You'
+    'Majestic Casual', 'Trap Nation', 'Bass Nation', 'Chill Nation', 'House Nation', 'Proximity',
+    'MrSuicideSheep', 'Monstercat', 'NoCopyrightSounds', 'NCS', 'Selected', 'Mixmag', 'Boiler Room',
+    'Cercle', 'UKF', 'Anjunabeats', 'Lowly Palace', 'Arctic Empire', 'Lyrical Lemonade', 'WorldStarHipHop'
 )
 $ChannelPattern = '(?i)\b(records|recordings|music|tv|official|channel|vevo|nation|network|allstars|arena|uploads?|promotions?|repost|archive)\s*$'
+
+# Website endings, used to strip download-site names from file names ("site.cc_artist-title").
+$WebTlds = '(?:com|net|org|cc|io|me|to|ws|biz|info|co|tv|app|site|xyz|online|pro)'
 
 # ---- Genre matching ---------------------------------------------------------
 
@@ -146,7 +156,7 @@ $SwitchInfo = [ordered]@{
     'SlugSplitting'   = 'Work out artist and title from web-rip file names'
     'ArtistFallback'  = "Use an artist's overall tags if a track is not found (less accurate)"
     'BpmCheck'        = 'Reject suggested genres whose BPM does not fit'
-    'HalfTimeFix'     = 'Double half-time BPM for BPM folders (87 -> 174)'
+    'HalfTimeFix'     = 'Double half-time BPM for BPM folders (64 -> 128)'
     'GenreDictionary' = 'Use the MusicBrainz genre list to filter out junk tags'
     'AskNewGenres'    = 'Offer to add new genres found in your tags or online'
     'Playlists'       = 'Write M3U playlists (pointing at your originals) for Rekordbox'
@@ -183,14 +193,16 @@ function Get-DefaultSettings {
         MusicRoot        = ''
         OutputFolder     = ''
         NewTracksFolders = @()
-        XmlPath          = ''
+        RecentXmlPaths   = @()          # newest first
+        LastMode         = ''
+        LastPlaylists    = @()          # playlist paths, like "Gigs/Club X"
         MbContact        = ''
         FolderLayout     = 'GenreBpmKeyCombined'
         KeyGroupSize     = 3            # Camelot numbers per key folder (1-6)
         KeyNotation      = 'Camelot'    # Camelot / OpenKey / Musical
         DetailLevel      = 'Detailed'   # Detailed = subgenre folders, Broad = one folder per family
         BpmBandWidth     = 5            # used for families without their own BPM groups
-        BpmGroups        = [ordered]@{ 'DnB' = '170,176' }   # boundaries -> 0-169 | 170-175 | 176+
+        BpmGroups        = [ordered]@{} # per family, e.g. 'House' = '120,126,130' -> 0-119 | 120-125 | 126-129 | 130+
         KeepLogs         = 10
         ChannelNames     = @($DefaultChannelNames)
         Switches         = [ordered]@{
@@ -436,7 +448,7 @@ function Read-Settings {
             $s.BpmGroups = [ordered]@{}
             foreach ($q in $p.Value.PSObject.Properties) { $s.BpmGroups[$q.Name] = [string]$q.Value }
         }
-        elseif ($key -in @('NewTracksFolders', 'ChannelNames')) {
+        elseif ($key -in @('NewTracksFolders', 'ChannelNames', 'RecentXmlPaths', 'LastPlaylists')) {
             $s[$key] = @($p.Value | Where-Object { $_ } | ForEach-Object { [string]$_ })
         }
         else { $s[$key] = $p.Value }
@@ -447,7 +459,8 @@ function Read-Settings {
     if ([string]$s.FolderLayout -notin @($LayoutNames.Keys)) { $s.FolderLayout = 'GenreBpmKeyCombined' }
     if ([string]$s.KeyNotation -notin @($NotationNames.Keys)) { $s.KeyNotation = 'Camelot' }
     if ([string]$s.DetailLevel -notin @('Detailed', 'Broad')) { $s.DetailLevel = 'Detailed' }
-    foreach ($k in @('MusicRoot', 'OutputFolder', 'XmlPath', 'MbContact')) { $s[$k] = [string]$s[$k] }
+    foreach ($k in @('MusicRoot', 'OutputFolder', 'LastMode', 'MbContact')) { $s[$k] = [string]$s[$k] }
+    if ($s.LastMode -notin @('Initial', 'New', 'Playlist')) { $s.LastMode = '' }
     return $s
 }
 
@@ -510,7 +523,7 @@ function Add-NewTracksFolder([string]$Path) {
 # Genre rules (GenreRules.json)
 # =============================================================================
 
-# "Minimal Drum & Bass" -> '^minimal ?drum ?(and|n) ?bass$' (matches the whole tag only).
+# "Funk & Disco" -> '^funk ?(and|n) ?disco$' (matches the whole tag only).
 function New-GenrePattern([string]$Name) {
     $words = @((Get-Norm $Name) -split ' ' | Where-Object { $_ } | ForEach-Object {
         if ($_ -eq 'and') { '(and|n)' } else { [regex]::Escape($_) }
@@ -876,7 +889,7 @@ function Test-InRange([int]$Value, [string]$Range) {
     return ($Value -ge $lo -and $Value -le $hi)
 }
 
-# Rekordbox sometimes detects DnB at half speed (87 instead of 174). If the doubled value fits
+# BPM detection sometimes finds half the real tempo (64 instead of 128). If the doubled value fits
 # the genre's main tempo and the detected one does not, the doubled value is used for folders.
 function Get-EffectiveBpm($Bpm, [string]$Genre) {
     $b = Get-RoundedBpm ([string]$Bpm)
@@ -888,7 +901,7 @@ function Get-EffectiveBpm($Bpm, [string]$Genre) {
     return $b
 }
 
-# DnB with groups '170,176' -> "0-169 BPM", "170-175 BPM", "176+ BPM".
+# A family with groups '120,126,130' -> "0-119 BPM", "120-125 BPM", "126-129 BPM", "130+ BPM".
 # Families without groups use bands of BpmBandWidth: "120-124 BPM".
 function Get-BpmLabel($Bpm, [string]$Genre) {
     $b = Get-EffectiveBpm $Bpm $Genre
@@ -947,10 +960,10 @@ function Show-FolderCounts($Items) {
     }
 }
 
-# "Genre\BPM + key (one level), 3 keys per folder, Camelot - e.g. Liquid DnB\170-175 BPM - Keys 07-09"
+# "Genre\BPM + key (one level), 3 keys per folder, Camelot - e.g. Tech House\125-129 BPM - Keys 07-09"
 function Get-LayoutSummary {
     $s = $script:Settings
-    $example = Get-TargetFolder ([pscustomobject]@{ Genre = 'Liquid DnB'; BPM = '174'; Camelot = '8A' })
+    $example = Get-TargetFolder ([pscustomobject]@{ Genre = 'Tech House'; BPM = '126'; Camelot = '8A' })
     $keys = if ([int]$s.KeyGroupSize -le 1) { '1 key per folder' } else { "$($s.KeyGroupSize) keys per folder" }
     return ('{0}, {1}, {2} - e.g. {3}' -f $LayoutNames[[string]$s.FolderLayout], $keys, $s.KeyNotation, $example)
 }
@@ -1037,24 +1050,45 @@ function Get-History {
 }
 
 # =============================================================================
-# Input: Rekordbox XML  (an M3U / Serato / Traktor reader would return the same fields)
+# Input: Rekordbox XML  (a Serato / Traktor reader would return the same fields)
 # =============================================================================
 
-function Get-TracksFromRekordboxXml([string]$Path) {
+function New-SafeXmlReaderSettings {
     $settings = New-Object System.Xml.XmlReaderSettings
     $settings.DtdProcessing = [System.Xml.DtdProcessing]::Prohibit   # no external entities
     $settings.XmlResolver = $null
+    return $settings
+}
+
+function Read-RekordboxXml([string]$Path) {
     $stream = [IO.File]::OpenRead($Path)
     try {
-        $reader = [System.Xml.XmlReader]::Create($stream, $settings)
+        $reader = [System.Xml.XmlReader]::Create($stream, (New-SafeXmlReaderSettings))
         $xml = New-Object System.Xml.XmlDocument
         $xml.XmlResolver = $null
         $xml.Load($reader)
         $reader.Close()
     }
     finally { $stream.Dispose() }
+    return ,$xml
+}
 
-    $nodes = @($xml.SelectNodes('/DJ_PLAYLISTS/COLLECTION/TRACK'))
+# Reads only the start of the file, so even a large export answers instantly. $null if unknown.
+function Get-XmlTrackCount([string]$Path) {
+    try {
+        $stream = [IO.File]::OpenRead($Path)
+        try {
+            $reader = [System.Xml.XmlReader]::Create($stream, (New-SafeXmlReaderSettings))
+            if ($reader.ReadToFollowing('COLLECTION')) { $n = 0; if ([int]::TryParse($reader.GetAttribute('Entries'), [ref]$n)) { return $n } }
+            return $null
+        }
+        finally { $stream.Dispose() }
+    }
+    catch { return $null }
+}
+
+function Get-TracksFromRekordboxXml($Xml) {
+    $nodes = @($Xml.SelectNodes('/DJ_PLAYLISTS/COLLECTION/TRACK'))
     if ($nodes.Count -eq 0) { throw 'No tracks found at /DJ_PLAYLISTS/COLLECTION/TRACK. Please use a Rekordbox XML export.' }
     foreach ($t in $nodes) {
         [pscustomobject]@{
@@ -1066,6 +1100,161 @@ function Get-TracksFromRekordboxXml([string]$Path) {
             Key        = $t.GetAttribute('Tonality')
             SourcePath = Convert-FileUriToPath $t.GetAttribute('Location')
         }
+    }
+}
+
+# Playlist tree from the same export: folders (IsFolder) and playlists with their track keys.
+# KeyType 0 = keys are TrackIDs, 1 = keys are file locations.
+function Get-RekordboxPlaylists($Xml) {
+    $root = $Xml.SelectSingleNode('/DJ_PLAYLISTS/PLAYLISTS/NODE')
+    $list = New-Object System.Collections.ArrayList
+    if ($root) { Add-PlaylistNodes $root '' 0 $list }
+    return @($list)
+}
+
+function Add-PlaylistNodes($Node, [string]$Prefix, [int]$Depth, $List) {
+    foreach ($child in @($Node.SelectNodes('NODE'))) {
+        $name = $child.GetAttribute('Name')
+        $path = if ($Prefix) { "$Prefix/$name" } else { $name }
+        if ($child.GetAttribute('Type') -eq '0') {
+            [void]$List.Add([pscustomobject]@{ IsFolder = $true; Name = $name; Path = $path; Depth = $Depth; KeyType = ''; Keys = @() })
+            Add-PlaylistNodes $child $path ($Depth + 1) $List
+        }
+        else {
+            $keys = @($child.SelectNodes('TRACK') | ForEach-Object { $_.GetAttribute('Key') })
+            [void]$List.Add([pscustomobject]@{ IsFolder = $false; Name = $name; Path = $path; Depth = $Depth; KeyType = $child.GetAttribute('KeyType'); Keys = $keys })
+        }
+    }
+}
+
+# "#latestmix" or "Gigs/Club X": a full path wins; a plain name matches every playlist with that name.
+function Find-PlaylistsByName($Playlists, [string[]]$Names) {
+    $all = @($Playlists | Where-Object { -not $_.IsFolder })
+    $result = @()
+    foreach ($n in @($Names | Where-Object { $_ })) {
+        $want = $n.Trim().Trim('/')
+        $hits = @($all | Where-Object { $_.Path -ieq $want })
+        if ($hits.Count -eq 0) { $hits = @($all | Where-Object { $_.Name -ieq $want }) }
+        if ($hits.Count -eq 0) { throw "Playlist '$n' was not found in this export." }
+        if ($hits.Count -gt 1) { Write-Warning "'$n' matches $($hits.Count) playlists; all of them are used. Use the full path (Folder/Playlist) to pick one." }
+        $result += $hits
+    }
+    return @($result | Sort-Object Path -Unique)
+}
+
+# Numbered playlist tree. Type numbers ("1", "2,5", "3-6"), or a word to search.
+function Select-Playlists($Playlists) {
+    $all = @($Playlists | Where-Object { -not $_.IsFolder })
+    if ($all.Count -eq 0) { Write-Warning 'This export contains no playlists.'; return @() }
+    $last = @($script:Settings.LastPlaylists)
+    $filter = ''
+    while ($true) {
+        $numbered = @()
+        Write-Host ''
+        foreach ($p in $Playlists) {
+            if ($filter -and $p.Path -notlike "*$filter*") { continue }
+            $indent = '  ' * $p.Depth
+            if ($p.IsFolder) {
+                if (-not $filter) { Write-Host ('       {0}{1}' -f $indent, $p.Name) -ForegroundColor DarkGray }
+                continue
+            }
+            $numbered += $p
+            $label = if ($filter) { $p.Path } else { $indent + $p.Name }
+            $mark = if ($last -contains $p.Path) { '  *' } else { '' }
+            Write-Host ('  {0,3}) {1,-45} ({2} tracks){3}' -f $numbered.Count, (Limit-Text $label 45), $p.Keys.Count, $mark)
+        }
+        $lastHits = @($all | Where-Object { $last -contains $_.Path })
+        if ($numbered.Count -eq 0) { Write-Host "  No playlist contains '$filter'." -ForegroundColor Yellow }
+        $hint = 'Number(s) like 1 or 2,5 or 3-6, a word to search'
+        if ($filter) { $hint += ', * = show all' }
+        if ($lastHits.Count -gt 0) { $hint += ', Enter = last choice (*)' }
+        $answer = (Read-Host $hint).Trim()
+        if (-not $answer) {
+            if ($lastHits.Count -gt 0) { return $lastHits }
+            continue
+        }
+        if ($answer -eq '*') { $filter = ''; continue }
+        if ($answer -notmatch '^[\d\s,\-]+$') { $filter = $answer; continue }
+        $picked = @()
+        $ok = $true
+        foreach ($part in ($answer -split ',')) {
+            $part = $part.Trim()
+            if (-not $part) { continue }
+            if ($part -match '^(\d+)\s*-\s*(\d+)$') { $range = [int]$Matches[1]..[int]$Matches[2] }
+            elseif ($part -match '^\d+$') { $range = @([int]$part) }
+            else { $ok = $false; break }
+            foreach ($i in $range) {
+                if ($i -lt 1 -or $i -gt $numbered.Count) { $ok = $false; break }
+                $picked += $numbered[$i - 1]
+            }
+        }
+        if ($ok -and $picked.Count -gt 0) { return @($picked | Sort-Object Path -Unique) }
+        Write-Host "Please use numbers between 1 and $($numbered.Count)." -ForegroundColor Yellow
+    }
+}
+
+# =============================================================================
+# Which export? (recent files, Browse..., or paste a path)
+# =============================================================================
+
+function Add-RecentXmlPath([string]$Path) {
+    $full = Get-FullPathOrNull $Path
+    if (-not $full) { return }
+    $list = @($full) + @($script:Settings.RecentXmlPaths | Where-Object { $_ -and $_ -ine $full })
+    $script:Settings.RecentXmlPaths = @($list | Select-Object -First 5)
+    Save-Settings
+}
+
+# Returns the chosen file, '' when cancelled, or $null when the window cannot open.
+function Show-XmlFileDialog {
+    # The Windows file window needs a single-threaded console (Windows PowerShell has one;
+    # PowerShell 7 usually does not, so it falls back to pasting a path).
+    if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') { return $null }
+    try {
+        Add-Type -AssemblyName System.Windows.Forms
+        $dlg = New-Object System.Windows.Forms.OpenFileDialog
+        $dlg.Title = 'Choose your Rekordbox XML export'
+        $dlg.Filter = 'Rekordbox XML (*.xml)|*.xml|All files (*.*)|*.*'
+        $dlg.InitialDirectory = [Environment]::GetFolderPath('Desktop')
+        $owner = New-Object System.Windows.Forms.Form
+        $owner.TopMost = $true                       # keeps the window in front of the console
+        try { $result = $dlg.ShowDialog($owner) } finally { $owner.Dispose() }
+        if ($result -eq [System.Windows.Forms.DialogResult]::OK) { return $dlg.FileName }
+        return ''
+    }
+    catch { return $null }
+}
+
+function Select-XmlSource {
+    $choices = @($script:Settings.RecentXmlPaths | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) })
+    $found = @((Join-Path ([Environment]::GetFolderPath('Desktop')) 'export.xml'), (Join-Path $env:USERPROFILE 'Downloads\export.xml'))
+    if ($PSScriptRoot) { $found += (Join-Path $PSScriptRoot 'export.xml') }
+    foreach ($f in $found) {
+        if ((Test-Path -LiteralPath $f -PathType Leaf) -and -not ($choices | Where-Object { $_ -ieq $f })) { $choices += $f }
+    }
+    while ($true) {
+        Write-Host ''
+        Write-Host 'Which Rekordbox export?' -ForegroundColor Cyan
+        Write-Host '  (In Rekordbox: File > Export Collection in xml format)' -ForegroundColor DarkGray
+        for ($i = 0; $i -lt $choices.Count; $i++) {
+            $item = Get-Item -LiteralPath $choices[$i]
+            $count = Get-XmlTrackCount $choices[$i]
+            $countText = if ($null -ne $count) { ', {0:N0} tracks' -f $count } else { '' }
+            Write-Host ('  {0}) {1,-45} (exported {2:g}{3})' -f ($i + 1), $choices[$i], $item.LastWriteTime, $countText)
+        }
+        Write-Host '  B) Browse...   P) Paste a path'
+        $valid = @(1..$choices.Count | Where-Object { $choices.Count -gt 0 } | ForEach-Object { [string]$_ }) + @('b', 'p')
+        $default = if ($choices.Count -gt 0) { '1' } else { 'b' }
+        $c = Read-Choice ("Choose [$default]") $valid $default
+        if ($c -match '^\d+$') { return $choices[[int]$c - 1] }
+        if ($c -eq 'b') {
+            $f = Show-XmlFileDialog
+            if ($f) { return $f }
+            if ($f -eq '') { continue }
+            Write-Host 'The file window could not open here, so please paste the path instead.' -ForegroundColor Yellow
+        }
+        $f = Read-FilePath 'Full path to the XML export (Enter = back)'
+        if ($f) { return $f }
     }
 }
 
@@ -1098,7 +1287,7 @@ function Test-IsChannel([string]$Name) {
     return ($Name.Trim() -match $ChannelPattern)
 }
 
-# "DnB Allstars - Gino - Du Du Du" -> "Gino - Du Du Du"
+# "Proximity - Artist - Title" -> "Artist - Title"
 function Remove-ChannelPrefix([string]$Text) {
     for ($i = 0; $i -lt 3; $i++) {
         if ($Text -notmatch '^(.+?)\s+-\s+(.+)$') { break }
@@ -1119,19 +1308,19 @@ function ConvertTo-LuceneText([string]$s) {
 # =============================================================================
 
 # Rekordbox tags, folder names and online tags all go through the same rules, so
-# "Drum & Bass", "Drum and Bass" and "DnB" all become "DnB". Junk tags return nothing.
+# "Hip-Hop", "Hip Hop" and "HipHop" all become "Hip Hop". Junk tags return nothing.
 function Get-RuleForTag([string]$Text) {
     $n = Get-Norm $Text
     if (-not $n -or $script:IgnoredGenres.ContainsKey($n)) { return $null }
     foreach ($rule in $script:GenreRules) {
-        if (@($rule.NormAliases) -contains $n) { return $rule }    # exact other spellings ("neuro", "psy")
+        if (@($rule.NormAliases) -contains $n) { return $rule }    # exact other spellings ("psy", "rap")
         foreach ($p in $rule.Patterns) { if ($n -match $p) { return $rule } }
     }
     return $null
 }
 
-# $true when the tag is just another way to write the genre's name ("Drum & Bass" for DnB),
-# $false when it says more ("Minimal Drum & Bass" - a possible new subgenre).
+# $true when the tag is just another way to write the genre's name ("Hip-Hop" for Hip Hop),
+# $false when it says more ("Minimal Techno" - a possible new subgenre).
 function Test-ExactGenreName($Rule, [string]$Text) {
     $n = Get-Norm $Text
     if ($n -eq (Get-Norm $Rule.Name)) { return $true }
@@ -1197,7 +1386,7 @@ function Add-DiscoveredGenre([string]$Name, [string]$From, [string]$Family = '')
 }
 
 # A Rekordbox tag that is not in the genre list, or says more than a known genre
-# ("Minimal Drum & Bass"), is offered as a new genre. Its family is guessed from the name.
+# ("Minimal Techno"), is offered as a new genre. Its family is guessed from the name.
 function Register-TagDiscovery([string]$Raw) {
     $n = Get-Norm $Raw
     if (-not $n -or $n -eq 'music' -or $script:IgnoredGenres.ContainsKey($n)) { return }
@@ -1242,7 +1431,7 @@ function Invoke-NewGenreReview {
             switch ($a) {
                 'y' { Add-GenreRule $d.Name $d.Family; $added++ }
                 'f' {
-                    $f = (Read-Host '  Family (for example DnB, House, Techno, or the genre itself)').Trim()
+                    $f = (Read-Host '  Family (for example House, Techno, Hip Hop, or the genre itself)').Trim()
                     Add-GenreRule $d.Name $f
                     $added++
                 }
@@ -1261,14 +1450,14 @@ function Invoke-NewGenreReview {
 # Search terms
 # =============================================================================
 
-# "Artist - Title.mp3", "01 Artist - Title.mp3", or a web-rip slug such as
-# "ytmp3free.cc_artist-track-name-free-download-youtubemp3free.org.mp3".
+# "Artist - Title.mp3", "01 Artist - Title.mp3", or a web-download slug such as
+# "somesite.cc_artist-track-name-free-download-othersite.org.mp3".
 function Get-NameFromFile([string]$Path) {
     if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
     $n = [IO.Path]::GetFileNameWithoutExtension($Path)
     $n = $n -replace '\s*\(\d+\)$', ''                                        # "Track (1)" duplicate suffix
-    $n = $n -replace '(?i)^(ytmp3free\.cc|y2mate\.com|ytmp3\.cc)[_\s-]*', ''
-    $n = $n -replace '(?i)[-_\s]*youtubemp3(free)?(\.org|\.com)?$', ''
+    $n = $n -replace "(?i)^(www\.)?[a-z0-9]+\.$WebTlds[_\s-]+", ''                 # "somesite.cc_" in front
+    $n = $n -replace "(?i)[-_\s]+(www\.)?[a-z0-9]+\.$WebTlds$", ''                  # "-othersite.org" at the end
     $n = $n -replace '[\u2013\u2014]', '-'
     $n = $n -replace '^0\d\s+', ''                                             # "01 Artist - Title"
     $n = $n -replace '^\d{1,3}\s*[-._)]\s+', ''                                # "1. Artist - Title"
@@ -1325,7 +1514,7 @@ function Get-SearchTerms([string]$Artist, [string]$Title, [string]$Path = '') {
     $t = (([string]$Title).Trim() -replace '[\u2013\u2014]', '-')
 
     # 1) the tags
-    if ($t -and $t -notmatch '(?i)ytmp3|youtubemp3|y2mate') {
+    if ($t -and $t -notmatch "(?i)\b[a-z0-9]+\.$WebTlds\b") {   # a website name in the title = junk tag
         $t = Remove-ChannelPrefix $t
         if ($t -match '^(.+?)\s+-\s+(.+)$') { $a = $Matches[1].Trim(); $t = $Matches[2].Trim() }
         if ($a) {
@@ -1384,7 +1573,7 @@ function Get-FolderHint([string]$Source) {
 # Lookup cache
 # =============================================================================
 
-# Values look like "drum and bass=3;liquid funk=12 || evidence": the raw tags each service
+# Values look like "techno=3;minimal techno=12 || evidence": the raw tags each service
 # returned, so changes to your genre list apply to cached lookups too.
 function Get-TagCache {
     $c = @{}
@@ -1866,66 +2055,6 @@ function Write-Playlists($Rows) {
 }
 
 # =============================================================================
-# One-time import from the earlier organizer script ('<output>\_Organizer')
-# =============================================================================
-
-function Import-OldOrganizerData {
-    if ($script:Unattended -or $script:Preview -or -not $script:OutputRoot) { return }
-    $old = Join-Path $script:OutputRoot '_Organizer'
-    if (-not (Test-Path -LiteralPath $old -PathType Container)) { return }
-    Write-Host ''
-    Write-Host "Found data from the earlier organizer script in: $old" -ForegroundColor Cyan
-    Write-Host '  Your decisions, copy history, lookup cache and API keys can be moved into TuneTidy.'
-    if (-not (Read-YesNo 'Import them now?' $true)) { return }
-
-    New-Item -ItemType Directory -Force -Path $script:DataRoot | Out-Null
-    foreach ($f in @('Decisions.csv', 'Processed.csv')) {
-        $src = Join-Path $old $f
-        $dst = Join-Path $script:DataRoot $f
-        if ((Test-Path -LiteralPath $src) -and -not (Test-Path -LiteralPath $dst)) {
-            Copy-Item -LiteralPath $src -Destination $dst
-            Write-Host "  imported $f"
-        }
-    }
-    # The old cache stored genre names, which work as tags in the new cache.
-    $j = Read-JsonFile (Join-Path $old 'GenreCache-v3.json')
-    if ($j) {
-        $cache = Get-TagCache
-        $n = 0
-        foreach ($p in $j.PSObject.Properties) { if (-not $cache.ContainsKey($p.Name)) { $cache[$p.Name] = [string]$p.Value; $n++ } }
-        Save-TagCache $cache
-        Write-Host "  imported $n cached lookups"
-    }
-    $oldKeys = Join-Path $old 'ApiKeys.json'
-    $j = Read-JsonFile $oldKeys
-    if ($j) {
-        $saved = Get-SavedKeys
-        foreach ($n in @('Discogs', 'LastFm')) {
-            $p = $j.PSObject.Properties[$n]
-            if ($p -and $p.Value -and -not $saved[$n]) { $saved[$n] = [string]$p.Value }
-        }
-        Save-SavedKeys $saved
-        Remove-Item -LiteralPath $oldKeys
-        Write-Host '  imported your API keys (now encrypted) and deleted the old plain-text key file'
-    }
-    $j = Read-JsonFile (Join-Path $old 'Settings.json')
-    if ($j -and $j.MbContact -and [string]$j.MbContact -ne 'none' -and -not $script:Settings.MbContact) {
-        $script:Settings.MbContact = [string]$j.MbContact
-        Save-Settings
-        Update-UserAgent
-    }
-    if (Test-Path -LiteralPath (Join-Path $old 'ApiKeys.xml')) {
-        Write-Host '  Note: the old folder still has ApiKeys.xml with your keys in readable form - delete it.' -ForegroundColor Yellow
-    }
-    try {
-        Rename-Item -LiteralPath $old -NewName '_Organizer-old'
-        Write-Host "  The old folder is now '_Organizer-old'. You can delete it once everything works."
-    }
-    catch { Write-Warning "Could not rename the old folder: $($_.Exception.Message)" }
-    Update-ApiKeys
-}
-
-# =============================================================================
 # Settings menu
 # =============================================================================
 
@@ -1966,10 +2095,10 @@ function Edit-FolderSettings {
         $nf = @($s.NewTracksFolders)
         if ($nf.Count -eq 0) { Write-Host '  New-tracks folders: (none)' }
         else { for ($i = 0; $i -lt $nf.Count; $i++) { Write-Host ('  New-tracks folder {0}: {1}' -f ($i + 1), $nf[$i]) } }
-        Write-Host "  Rekordbox export:  $(if ($s.XmlPath) { $s.XmlPath } else { '(asked when you run)' })"
+        Write-Host "  Recent Rekordbox exports: $(@($s.RecentXmlPaths).Count) (you pick one at the start of every run)"
         Write-Host ''
         Write-Host '  1) Change music folder   2) Change output folder   3) Add a new-tracks folder'
-        Write-Host '  4) Remove a new-tracks folder   5) Change Rekordbox export file   0) Back'
+        Write-Host '  4) Remove a new-tracks folder   5) Forget the list of recent Rekordbox exports   0) Back'
         switch (Read-Choice 'Choose' @('0', '1', '2', '3', '4', '5') '0') {
             '0' { return }
             '1' {
@@ -2003,8 +2132,9 @@ function Edit-FolderSettings {
                 if ($n -ge 1) { $s.NewTracksFolders = @($nf | Where-Object { $_ -ne $nf[$n - 1] }); Save-Settings }
             }
             '5' {
-                $f = Read-FilePath 'Full path to the Rekordbox XML export (Enter to keep)'
-                if ($f) { $s.XmlPath = $f; Save-Settings }
+                $s.RecentXmlPaths = @()
+                Save-Settings
+                Write-Host 'List cleared. The XML files themselves are not touched.'
             }
         }
     }
@@ -2040,15 +2170,15 @@ function Edit-LayoutSettings {
                 if ($n -ge 1) { $s.KeyNotation = $keys[$n - 1] }
             }
             '4' {
-                Write-Host '  Boundaries split BPM into groups: "170,176" gives 0-169, 170-175 and 176+.'
+                Write-Host '  Boundaries split BPM into groups: "120,126,130" gives 0-119, 120-125, 126-129 and 130+.'
                 Write-Host ('  Families: ' + ((@($script:GenreRules | ForEach-Object { $_.Family } | Select-Object -Unique)) -join ', ')) -ForegroundColor DarkGray
-                $fam = (Read-Host 'Family (for example DnB)').Trim()
+                $fam = (Read-Host 'Family (for example House)').Trim()
                 if (-not $fam) { continue }
                 $txt = (Read-Host "Boundaries for $fam (Enter = remove its groups)").Trim()
                 $existing = @($s.BpmGroups.Keys | Where-Object { $_ -ieq $fam })
                 foreach ($k in $existing) { $s.BpmGroups.Remove($k) }
                 if ($txt) {
-                    if ($txt -notmatch '^\d+(\s*[,;]\s*\d+)*$') { Write-Host 'Please type numbers separated by commas, like 170,176.' -ForegroundColor Yellow; continue }
+                    if ($txt -notmatch '^\d+(\s*[,;]\s*\d+)*$') { Write-Host 'Please type numbers separated by commas, like 120,126,130.' -ForegroundColor Yellow; continue }
                     $s.BpmGroups[$fam] = ($txt -replace '\s', '' -replace ';', ',')
                 }
             }
@@ -2115,15 +2245,15 @@ function Edit-GenreSettings {
             }
             '2' { Show-GenreList }
             '3' {
-                $name = (Read-Host 'New genre name (for example Minimal DnB)').Trim()
+                $name = (Read-Host 'New genre name (for example Minimal Techno)').Trim()
                 if (-not $name) { continue }
                 if (Get-GenreRule $name) { Write-Host 'That genre already exists.' -ForegroundColor Yellow; continue }
                 $guess = Get-RuleForTag $name
                 $defFam = if ($guess) { $guess.Family } else { $name }
                 $fam = (Read-Host "Family [$defFam]").Trim()
                 if (-not $fam) { $fam = $defFam }
-                $bpm = (Read-Host 'Accepted BPM ranges, like 160-180 (Enter = use the family''s)').Trim()
-                if (-not (Test-BpmRangeText $bpm)) { Write-Host 'BPM ranges look like 160-180 or 160-180,80-90. Saved without BPM.' -ForegroundColor Yellow; $bpm = '' }
+                $bpm = (Read-Host 'Accepted BPM ranges, like 120-135 (Enter = use the family''s)').Trim()
+                if (-not (Test-BpmRangeText $bpm)) { Write-Host 'BPM ranges look like 120-135 or 120-135,60-68. Saved without BPM.' -ForegroundColor Yellow; $bpm = '' }
                 Add-GenreRule $name $fam $bpm
                 Save-GenreRules
                 Write-Host "Added '$name'. Tags spelled exactly like the name are matched; add more patterns under Edit." -ForegroundColor Green
@@ -2197,12 +2327,12 @@ function Edit-OneGenre {
             }
             '2' { $f = (Read-Host "Family [$($r.Family)]").Trim(); if ($f) { $r.Family = $f } }
             '3' {
-                $b = (Read-Host 'BPM ranges like 160-180,80-90 (first = main tempo; Enter = use the family''s)').Trim()
-                if (Test-BpmRangeText $b) { $r.Bpm = $b } else { Write-Host 'Not changed: use the form 160-180,80-90.' -ForegroundColor Yellow }
+                $b = (Read-Host 'BPM ranges like 120-135,60-68 (first = main tempo; Enter = use the family''s)').Trim()
+                if (Test-BpmRangeText $b) { $r.Bpm = $b } else { Write-Host 'Not changed: use the form 120-135,60-68.' -ForegroundColor Yellow }
             }
             '4' {
                 Write-Host '  Patterns are regular expressions checked against the tag in lower case, with & written as and.'
-                Write-Host '  Examples: "liquid" (anywhere in the tag), "^deep dnb$" (exactly), "drum ?(and|n) ?bass".'
+                Write-Host '  Examples: "melodic" (anywhere in the tag), "^deep tech$" (exactly), "hip ?hop" (with or without a space).'
                 $p = (Read-Host 'Patterns separated by " | " (Enter = keep)').Trim()
                 if ($p) { $r.Patterns = @($p -split '\s+\|\s+' | Where-Object { $_ }) }
             }
@@ -2406,7 +2536,7 @@ function Invoke-ResetMenu {
             if (Read-YesNo 'Restore default settings?' $false) {
                 $old = $script:Settings
                 $new = Get-DefaultSettings
-                foreach ($k in @('MusicRoot', 'OutputFolder', 'NewTracksFolders', 'XmlPath', 'MbContact')) { $new[$k] = $old[$k] }
+                foreach ($k in @('MusicRoot', 'OutputFolder', 'NewTracksFolders', 'RecentXmlPaths', 'LastMode', 'LastPlaylists', 'MbContact')) { $new[$k] = $old[$k] }
                 $script:Settings = $new
                 Save-Settings
                 Initialize-Paths
@@ -2500,22 +2630,48 @@ if (-not $script:Settings.OutputFolder) { throw "No output folder is set. Fix or
 Initialize-Paths
 Read-GenreRules
 Update-ApiKeys
-Import-OldOrganizerData
 Remove-OldLogs
 
 # =============================================================================
-# STEP 1 - whole collection, only new tracks, or settings?
+# STEP 1 - which Rekordbox export?
 # =============================================================================
 
-if ($script:Unattended -and -not $Mode) { $Mode = 'New' }
+if (-not $XmlPath) {
+    $recent = @($script:Settings.RecentXmlPaths | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) })
+    if ($script:Unattended) {
+        if ($recent.Count -eq 0) { throw 'No saved Rekordbox export found. Pass -XmlPath or run once normally.' }
+        $XmlPath = $recent[0]
+    }
+    else { $XmlPath = Select-XmlSource }
+}
+if (-not (Test-Path -LiteralPath $XmlPath -PathType Leaf)) { throw "XML file not found: $XmlPath" }
+$XmlPath = Get-FullPathOrNull $XmlPath
+Add-RecentXmlPath $XmlPath
+Write-Host "Reading $XmlPath ..." -ForegroundColor DarkGray
+$xml = Read-RekordboxXml $XmlPath
+$tracks = @(Get-TracksFromRekordboxXml $xml)
+$playlistTree = @(Get-RekordboxPlaylists $xml)
+
+# =============================================================================
+# STEP 2 - what to check: whole collection, new tracks, playlists (or settings)
+# =============================================================================
+
+if ($Playlist) { $Mode = 'Playlist' }
+if ($script:Unattended -and -not $Mode) {
+    $Mode = if ($script:Settings.LastMode) { [string]$script:Settings.LastMode } else { 'New' }
+}
+$selectedPlaylists = @()
 while (-not $Mode) {
     $nf = @($script:Settings.NewTracksFolders)
+    $plCount = @($playlistTree | Where-Object { -not $_.IsFolder }).Count
     Write-Host ''
+    Write-Host ('What should TuneTidy check? ({0:N0} tracks, {1} playlists in this export)' -f $tracks.Count, $plCount) -ForegroundColor Cyan
     Write-Host '  1) Whole collection (first-time organize, or re-check everything)'
     Write-Host ('  2) Only new tracks ({0})' -f $(if ($nf.Count) { ($nf | ForEach-Object { Split-Path -Leaf $_ }) -join ', ' } else { 'no new-tracks folder set yet' }))
-    Write-Host '  3) Settings'
-    Write-Host '  4) Quit'
-    switch (Read-Choice 'Choose 1-4 [1]' @('1', '2', '3', '4') '1') {
+    Write-Host '  3) One or more playlists'
+    Write-Host '  4) Settings'
+    Write-Host '  5) Quit'
+    switch (Read-Choice 'Choose 1-5 [1]' @('1', '2', '3', '4', '5') '1') {
         '1' { $Mode = 'Initial' }
         '2' {
             if ($nf.Count -eq 0) {
@@ -2524,43 +2680,50 @@ while (-not $Mode) {
             }
             else { $Mode = 'New' }
         }
-        '3' { Show-SettingsMenu; Initialize-Paths }
-        '4' { exit 0 }
+        '3' {
+            $selectedPlaylists = @(Select-Playlists $playlistTree)
+            if ($selectedPlaylists.Count -gt 0) { $Mode = 'Playlist' }
+        }
+        '4' { Show-SettingsMenu; Initialize-Paths }
+        '5' { exit 0 }
     }
 }
 if ($Mode -eq 'New' -and @($script:Settings.NewTracksFolders).Count -eq 0) {
     throw 'No new-tracks folder is set. Add one under Settings > Folders.'
 }
-$script:Decisions = Get-Decisions
-
-# =============================================================================
-# STEP 2 - which Rekordbox export?
-# =============================================================================
-
-if (-not $XmlPath) {
-    $saved = [string]$script:Settings.XmlPath
-    if ($saved -and (Test-Path -LiteralPath $saved -PathType Leaf)) {
-        $when = (Get-Item -LiteralPath $saved).LastWriteTime
-        if ($script:Unattended -or (Read-YesNo ("Use Rekordbox export '{0}' (saved {1:g})?" -f $saved, $when))) { $XmlPath = $saved }
-    }
-    elseif ($script:Unattended) { throw 'No saved Rekordbox export found. Pass -XmlPath or run once normally.' }
-    if (-not $XmlPath) {
-        $candidates = @()
-        if ($PSScriptRoot) { $candidates += (Join-Path $PSScriptRoot 'export.xml') }
-        $candidates += (Join-Path ([Environment]::GetFolderPath('Desktop')) 'export.xml')
-        $found = $candidates | Where-Object { $_ -ne $saved -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
-        if ($found -and (Read-YesNo "Use Rekordbox export '$found'?")) { $XmlPath = $found }
-        while (-not $XmlPath) {
-            Write-Host 'In Rekordbox: File > Export Collection in xml format.' -ForegroundColor DarkGray
-            $XmlPath = Read-FilePath 'Full path to your Rekordbox XML export' $false
+if ($Mode -eq 'Playlist' -and $selectedPlaylists.Count -eq 0) {
+    if ($Playlist) { $selectedPlaylists = @(Find-PlaylistsByName $playlistTree $Playlist) }
+    elseif (@($script:Settings.LastPlaylists).Count -gt 0) {
+        try { $selectedPlaylists = @(Find-PlaylistsByName $playlistTree @($script:Settings.LastPlaylists)) }
+        catch {
+            if ($script:Unattended) { throw }
+            Write-Host "$($_.Exception.Message) Please pick again." -ForegroundColor Yellow
+            $selectedPlaylists = @(Select-Playlists $playlistTree)
         }
     }
+    elseif ($script:Unattended) { throw 'No playlist chosen. Pass -Playlist "name" or pick one in a normal run first.' }
+    else { $selectedPlaylists = @(Select-Playlists $playlistTree) }
+    if ($selectedPlaylists.Count -eq 0) { throw 'No playlist chosen.' }
 }
-if (-not (Test-Path -LiteralPath $XmlPath -PathType Leaf)) { throw "XML file not found: $XmlPath" }
-$XmlPath = Get-FullPathOrNull $XmlPath
-if ($script:Settings.XmlPath -ne $XmlPath) { $script:Settings.XmlPath = $XmlPath; Save-Settings }
-if ($Mode -eq 'New' -and ((Get-Date) - (Get-Item -LiteralPath $XmlPath).LastWriteTime).TotalHours -gt 24) {
+if ($Mode -eq 'Playlist') {
+    Write-Host ('Playlists: ' + (($selectedPlaylists | ForEach-Object { $_.Path }) -join ', '))
+    $script:Settings.LastPlaylists = @($selectedPlaylists | ForEach-Object { $_.Path })
+}
+$script:Settings.LastMode = $Mode
+Save-Settings
+$script:Decisions = Get-Decisions
+if ($Mode -ne 'Initial' -and ((Get-Date) - (Get-Item -LiteralPath $XmlPath).LastWriteTime).TotalHours -gt 24) {
     Write-Host 'Tip: this export is more than a day old. New tracks only show up after you import them into Rekordbox and export again.' -ForegroundColor DarkGray
+}
+
+# Track IDs and file paths of the chosen playlists
+$playlistIds = @{}
+$playlistPaths = @{}
+foreach ($pl in $selectedPlaylists) {
+    foreach ($k in @($pl.Keys)) {
+        if ($pl.KeyType -eq '1') { $lp = Get-FullPathOrNull (Convert-FileUriToPath $k); if ($lp) { $playlistPaths[$lp.ToLowerInvariant()] = $true } }
+        else { $playlistIds[[string]$k] = $true }
+    }
 }
 
 # =============================================================================
@@ -2568,7 +2731,6 @@ if ($Mode -eq 'New' -and ((Get-Date) - (Get-Item -LiteralPath $XmlPath).LastWrit
 # =============================================================================
 
 New-Item -ItemType Directory -Force -Path $script:DataRoot | Out-Null
-$tracks = @(Get-TracksFromRekordboxXml $XmlPath)
 $newRoots = @($script:Settings.NewTracksFolders | ForEach-Object { Get-FullPathOrNull $_ } | Where-Object { $_ })
 $script:Discovered = @{}
 $skippedNetwork = 0
@@ -2584,6 +2746,11 @@ $rows = foreach ($t in $tracks) {
         $inNew = $false
         foreach ($nr in $newRoots) { if (Test-InsideFolder $source $nr) { $inNew = $true } }
         if (-not $inNew) { continue }
+    }
+    if ($Mode -eq 'Playlist') {
+        $full = Get-FullPathOrNull $source
+        $inList = $playlistIds.ContainsKey([string]$t.TrackID) -or ($full -and $playlistPaths.ContainsKey($full.ToLowerInvariant()))
+        if (-not $inList) { continue }
     }
     $genreRaw = ([string]$t.Genre).Trim()
     if (-not $genreRaw -or $genreRaw -eq 'Music') { $genre = ''; $gsrc = '' }      # Rekordbox's generic "Music"
@@ -2619,6 +2786,11 @@ $rows = foreach ($t in $tracks) {
 $rows = @($rows)
 
 if ($rows.Count -eq 0) {
+    if ($Mode -eq 'Playlist') {
+        Write-Warning 'The chosen playlists contain no tracks that TuneTidy can use (empty, or only files inside the output folder).'
+        if (-not $script:Unattended) { Read-Host 'Press Enter to close this window' | Out-Null }
+        exit 0
+    }
     if ($Mode -eq 'New') {
         Write-Warning 'No tracks in the export point to files inside your new-tracks folder(s). Import the files into Rekordbox and export a fresh XML.'
         if (-not $script:Unattended) { Read-Host 'Press Enter to close this window' | Out-Null }
@@ -2939,7 +3111,7 @@ if ((Test-Switch 'OfferPlanEdit') -and (Read-YesNo 'Open the plan in your spread
         # A genre you type yourself is added to your genre list.
         if (-not (Get-GenreRule $newGenre) -and $newGenre -ne $SamplesGenre) { Add-GenreRule $newGenre; $newGenre = (Get-StandardGenre $typed); $rulesChanged = $true }
         if ($newGenre -ceq [string]$r.Genre) { continue }
-        Write-GenreLog $r 'Manual plan edit' 'Organizer plan' $newGenre 'Changed by you (remembered)' ("was: $($r.Genre)") ''
+        Write-GenreLog $r 'Manual plan edit' 'TuneTidy plan' $newGenre 'Changed by you (remembered)' ("was: $($r.Genre)") ''
         $r.Genre = $newGenre
         $r.GenreSource = 'Decision'
         Set-Decision -Decisions $script:Decisions -Row $r -Genre $newGenre -Source 'Manual (plan edit)'
@@ -2953,7 +3125,7 @@ if ((Test-Switch 'OfferPlanEdit') -and (Read-YesNo 'Open the plan in your spread
 }
 
 foreach ($row in $rows) {
-    Write-GenreLog $row 'Final plan destination' 'Organizer plan' ([string]$row.Genre) ("Destination folder: $($row.DestinationFolder)") ("BPM=$($row.BPM); Key=$($row.Key); Camelot=$($row.Camelot)") ''
+    Write-GenreLog $row 'Final plan destination' 'TuneTidy plan' ([string]$row.Genre) ("Destination folder: $($row.DestinationFolder)") ("BPM=$($row.BPM); Key=$($row.Key); Camelot=$($row.Camelot)") ''
 }
 
 # =============================================================================

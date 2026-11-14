@@ -4,13 +4,13 @@ Sort a DJ music library into **genre / BPM / key** folders, straight from a Reko
 
 ```
 Organized Music\
-  Liquid DnB\
-    170-175 BPM - Keys 07-09\
-    176+ BPM - Keys 10-12\
-  Neurofunk\
-    170-175 BPM - Keys 01-03\
   Tech House\
     125-129 BPM - Keys 04-06\
+    125-129 BPM - Keys 07-09\
+  Techno\
+    130-134 BPM - Keys 01-03\
+  Hip Hop\
+    90-94 BPM - Keys 10-12\
   _Review\          (genre unknown - check these by hand)
   _Playlists\       (the same structure as Rekordbox playlists)
 ```
@@ -23,10 +23,10 @@ TuneTidy **never moves, renames or deletes your original files**. It only *copie
 
 ## What it does
 
-1. Reads your Rekordbox collection (an XML export).
+1. Reads your Rekordbox collection (an XML export): everything, only new tracks, or just the playlists you pick.
 2. Works out a genre for every track, in this order:
    - genres you decided yourself in earlier runs,
-   - the Genre tag in Rekordbox (tidied up, so "Drum & Bass", "Drum and Bass" and "DnB" all become **DnB**),
+   - the Genre tag in Rekordbox (tidied up, so "Hip-Hop", "HipHop" and "Hip Hop" all become **Hip Hop**),
    - the name of the folder the track sits in,
    - online lookups on MusicBrainz, Discogs and Last.fm (optional; you approve the suggestions).
 3. Shows you a plan, which you can edit in Excel if you like.
@@ -45,7 +45,7 @@ It remembers your answers, so the next run only asks about new tracks.
 
 1. Download `TuneTidy.ps1` from this repository (or the latest release) into a folder of your choice.
 2. Windows blocks scripts downloaded from the internet. Right-click the file > **Properties** > tick **Unblock** > OK.
-3. In Rekordbox: **File > Export Collection in xml format**, and save it, for example, to your Desktop as `export.xml`.
+3. In Rekordbox: **File > Export Collection in xml format**, and save it, for example, to your Desktop as `export.xml`. Rekordbox always exports the whole collection, including all playlists; TuneTidy picks out what you want.
 4. Right-click `TuneTidy.ps1` > **Run with PowerShell**.
 
    Or open PowerShell in that folder and run:
@@ -56,16 +56,29 @@ It remembers your answers, so the next run only asks about new tracks.
 
 The first run asks a few questions: your music folder, where the sorted copies should go, your "new tracks" folder (where downloads land), and optional API keys. Everything can be changed later under **Settings**.
 
-## The start menu
+## Every run: pick the export, then what to check
+
+First you choose which XML file to use. Your last five exports are remembered, with their date and track count, so you can see whether an export is up to date:
+
+```
+Which Rekordbox export?
+  1) C:\Users\you\Desktop\export.xml     (exported 14.11.2026 14:02, 8,412 tracks)
+  B) Browse...   P) Paste a path
+```
+
+**Browse...** opens the normal Windows "Open file" window. Then you choose what to check:
 
 ```
   1) Whole collection (first-time organize, or re-check everything)
   2) Only new tracks (your new-tracks folders)
-  3) Settings
-  4) Quit
+  3) One or more playlists
+  4) Settings
+  5) Quit
 ```
 
-For new tracks: import them into Rekordbox first, export a fresh XML, then choose 2.
+**Playlists** shows your playlist tree from the export, numbered, with track counts. Type one number (`1`), several (`2,5`) or a range (`3-6`), or type a word to search when you have many playlists. Your choice is remembered, so Enter picks the same playlists next time.
+
+For new tracks: import them into Rekordbox first, export a fresh XML, then choose 2 (or the playlist you put them in).
 
 ## Folder layout
 
@@ -73,26 +86,27 @@ Choose under **Settings > Folder layout**:
 
 | Layout | Example |
 |---|---|
-| Genre\BPM + key, one level (default) | `Liquid DnB\170-175 BPM - Keys 07-09` |
-| Genre\BPM\Key, two levels | `Liquid DnB\170-175 BPM\Keys 07-09` |
-| Genre\Key | `Liquid DnB\Keys 07-09` |
-| Genre only | `Liquid DnB` |
+| Genre\BPM + key, one level (default) | `Tech House\125-129 BPM - Keys 07-09` |
+| Genre\BPM\Key, two levels | `Tech House\125-129 BPM\Keys 07-09` |
+| Genre\Key | `Tech House\Keys 07-09` |
+| Genre only | `Tech House` |
 
 You can also set:
 
 - **Keys per folder**: 1 (a folder per Camelot number, `08 - 8A 8B`), 2, 3 (default, four folders), 4 or 6.
 - **Key notation**: Camelot (`8A`), Open Key (`1m`) or musical (`Am`).
-- **BPM groups per genre family**: DnB defaults to `170,176`, which gives `0-169`, `170-175` and `176+`. Other families use 5-BPM bands (`120-124 BPM`), which you can change.
-- **Half-time fix**: Rekordbox sometimes detects DnB at 87 instead of 174. TuneTidy doubles such values for the BPM folders.
+- **BPM bands**: 5 BPM wide by default (`120-124 BPM`); the width can be changed.
+- **BPM groups per genre family**: your own boundaries instead of bands, for example `120,126,130` for House gives `0-119`, `120-125`, `126-129` and `130+`.
+- **Half-time fix**: BPM detection sometimes finds half the real tempo (64 instead of 128). TuneTidy doubles such values when the doubled value fits the genre.
 
 ## Genres
 
-TuneTidy ships with about 40 genres (DnB styles, house, techno, trance, dubstep, garage, breaks, hip hop and more), each with a **family** and a typical BPM range. Manage them under **Settings > Genres**: add, rename, merge, delete, change families and BPM ranges, or switch the **detail level**:
+TuneTidy ships with about 40 genres (house, techno, trance, drum & bass, dubstep, garage, breaks, hip hop, pop, rock and more, several with subgenres), each with a **family** and a typical BPM range. Manage them under **Settings > Genres**: add, rename, merge, delete, change families and BPM ranges, or switch the **detail level**:
 
-- **Detailed**: every subgenre gets its own folder (Neurofunk, Liquid DnB, ...).
-- **Broad**: one folder per family (DnB, House, ...).
+- **Detailed**: every subgenre gets its own folder (Tech House, Deep House, ...).
+- **Broad**: one folder per family (House, Techno, ...).
 
-**New genres are found automatically.** When your Rekordbox tags or the online services mention a genre that is not in your list yet ("Halftime", "Minimal Drum & Bass"), TuneTidy shows them at the end of the genre step with their track counts and a guessed family. One answer adds them all.
+**New genres are found automatically.** When your Rekordbox tags or the online services mention a genre that is not in your list yet ("Minimal Techno", "Electro Swing"), TuneTidy shows them at the end of the genre step with their track counts and a guessed family. One answer adds them all.
 
 To tell real genres from junk tags ("seen live", "favourites", artist names), TuneTidy uses MusicBrainz's public genre list, refreshed about once a month. That list is only a dictionary: folders are only made for genres that are actually in your collection.
 
@@ -127,7 +141,7 @@ So TuneTidy also writes one `.m3u8` playlist per folder into `Organized Music\_P
 
 Everything is under **3) Settings** in the start menu:
 
-- **Folders**: music folder, output folder, new-tracks folders (several allowed), Rekordbox export.
+- **Folders**: music folder, output folder, new-tracks folders (several allowed), the list of recent Rekordbox exports.
 - **Folder layout**: see above.
 - **Genres**: see above.
 - **Lookup services and API keys**: see above.
@@ -151,9 +165,13 @@ TuneTidy can run without questions, for example every Sunday evening:
 
 ```powershell
 .\TuneTidy.ps1 -Mode New -Unattended
+.\TuneTidy.ps1 -Playlist "#latestmix" -Unattended
+.\TuneTidy.ps1 -XmlPath "C:\Users\you\Desktop\export.xml" -Playlist "Gigs/Club X", "Warmup" -Unattended
 ```
 
-In unattended mode, new tracks are copied using your saved settings and the saved Rekordbox export. Online genre suggestions are **not** applied: those tracks wait in `_Review` until your next normal run, where the suggestions appear instantly from the cache. Earlier copies are never moved.
+Playlists in folders are written as `Folder/Playlist`. Without `-XmlPath`, the most recent export is used; without `-Mode` or `-Playlist`, the same kind of run as last time (and the same playlists).
+
+In unattended mode, tracks are copied using your saved settings. Online genre suggestions are **not** applied: those tracks wait in `_Review` until your next normal run, where the suggestions appear instantly from the cache. Earlier copies are never moved.
 
 To create a weekly Windows task (adjust the path):
 
@@ -165,7 +183,7 @@ Remember that Rekordbox only knows new tracks after you import them and export a
 
 ## Privacy
 
-- Only **artist and title** are sent online, and only to the services you switch on.
+- Only **artist and title** are sent online, and only to the services you switch on. Your playlists and file paths never leave your PC.
 - Requests identify the app as `TuneTidy/<version> ( https://github.com/Tunetidy/Tunetidy )`, as MusicBrainz and Discogs require. An email address is optional.
 - No telemetry, no analytics, no accounts.
 
@@ -190,7 +208,7 @@ Invoke-Pester -Path .\tests
 
 They run automatically on GitHub for Windows PowerShell 5.1 and PowerShell 7.
 
-The script is organised in steps (STEP 0 to STEP 7). Input is read in one place (`Get-TracksFromRekordboxXml`), so other inputs can be added as separate functions that return the same fields.
+The script is organised in steps (STEP 0 to STEP 7). Input is read in one place (`Read-RekordboxXml`, `Get-TracksFromRekordboxXml`, `Get-RekordboxPlaylists`), so other inputs can be added as separate functions that return the same fields.
 
 ## Roadmap
 
