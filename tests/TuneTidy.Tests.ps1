@@ -42,13 +42,12 @@ Describe 'Get-RoundedBpm' {
 
 Describe 'Genre rules' {
     It 'maps <Tag> to <Expected>' -TestCases @(
+        @{ Tag = 'Hip-Hop'; Expected = 'Hip Hop' }
+        @{ Tag = 'HipHop'; Expected = 'Hip Hop' }
+        @{ Tag = 'rap'; Expected = 'Hip Hop' }
         @{ Tag = 'Drum & Bass'; Expected = 'DnB' }
-        @{ Tag = 'Drum and Bass'; Expected = 'DnB' }
         @{ Tag = "Drum'n'Bass"; Expected = 'DnB' }
-        @{ Tag = 'DnB'; Expected = 'DnB' }
-        @{ Tag = 'Jump Up Drum & Bass'; Expected = 'Jump Up' }
-        @{ Tag = 'Liquid Funk'; Expected = 'Liquid DnB' }
-        @{ Tag = 'neuro'; Expected = 'Neurofunk' }
+        @{ Tag = 'Psy'; Expected = 'Psytrance' }
         @{ Tag = 'Tech House'; Expected = 'Tech House' }
         @{ Tag = 'House'; Expected = 'House' }
         @{ Tag = 'Hardcore Techno'; Expected = 'Hardcore' }
@@ -63,22 +62,22 @@ Describe 'Genre rules' {
     }
 
     It 'knows families' {
-        Get-GenreFamily 'Neurofunk' | Should -Be 'DnB'
         Get-GenreFamily 'Tech House' | Should -Be 'House'
+        Get-GenreFamily 'Psytrance' | Should -Be 'Trance'
         Get-GenreFamily 'Something New' | Should -Be 'Something New'
     }
 
     It 'tells another spelling apart from a possible new subgenre' {
-        $dnb = Get-GenreRule 'DnB'
-        Test-ExactGenreName $dnb 'Drum & Bass' | Should -BeTrue
-        Test-ExactGenreName $dnb 'Minimal Drum & Bass' | Should -BeFalse
+        $techno = Get-GenreRule 'Techno'
+        Test-ExactGenreName $techno 'TECHNO' | Should -BeTrue
+        Test-ExactGenreName $techno 'Minimal Techno' | Should -BeFalse
     }
 
     It 'builds a pattern that matches only the whole name' {
-        $p = New-GenrePattern 'Minimal Drum & Bass'
-        (Get-Norm 'Minimal Drum & Bass') | Should -Match $p
-        (Get-Norm 'Minimal Drum n Bass') | Should -Match $p
-        (Get-Norm 'Drum & Bass') | Should -Not -Match $p
+        $p = New-GenrePattern 'Funk & Disco'
+        (Get-Norm 'Funk & Disco') | Should -Match $p
+        (Get-Norm 'Funk n Disco') | Should -Match $p
+        (Get-Norm 'Funk') | Should -Not -Match $p
     }
 }
 
@@ -86,18 +85,18 @@ Describe 'Select-Genre and BPM checks' {
     BeforeEach { $script:Settings = Get-DefaultSettings }
 
     It 'picks a subgenre with enough evidence' {
-        (Select-Genre @{ 'Liquid DnB' = 3.0; 'DnB' = 1.0 }).Genre | Should -Be 'Liquid DnB'
+        (Select-Genre @{ 'Tech House' = 3.0; 'House' = 1.0 }).Genre | Should -Be 'Tech House'
     }
     It 'falls back to the family when no subgenre dominates' {
-        (Select-Genre @{ 'DnB' = 2.0; 'Liquid DnB' = 0.5 }).Genre | Should -Be 'DnB'
+        (Select-Genre @{ 'House' = 2.0; 'Tech House' = 0.5 }).Genre | Should -Be 'House'
     }
     It 'gives up when sources disagree' {
-        Select-Genre @{ 'House' = 1.0; 'DnB' = 1.0 } | Should -BeNullOrEmpty
+        Select-Genre @{ 'House' = 1.0; 'Techno' = 1.0 } | Should -BeNullOrEmpty
     }
     It 'checks BPM: <Genre> at <Bpm> -> <Expected>' -TestCases @(
-        @{ Genre = 'Neurofunk'; Bpm = '174'; Expected = $true }
-        @{ Genre = 'Neurofunk'; Bpm = '87'; Expected = $true }
-        @{ Genre = 'Neurofunk'; Bpm = '125'; Expected = $false }
+        @{ Genre = 'Tech House'; Bpm = '126'; Expected = $true }
+        @{ Genre = 'Tech House'; Bpm = '174'; Expected = $false }
+        @{ Genre = 'Dubstep'; Bpm = '70'; Expected = $true }
         @{ Genre = 'Hip Hop'; Bpm = '90'; Expected = $true }
     ) {
         Test-GenreBpm $Genre $Bpm | Should -Be $Expected
@@ -121,62 +120,73 @@ Describe 'Folder layout' {
         Get-KeyLabel $Camelot | Should -Be $Expected
     }
 
-    It 'makes BPM groups: <Genre> at <Bpm> -> <Expected>' -TestCases @(
-        @{ Genre = 'Liquid DnB'; Bpm = '174'; Expected = '170-175 BPM' }
-        @{ Genre = 'Liquid DnB'; Bpm = '87'; Expected = '170-175 BPM' }
-        @{ Genre = 'Neurofunk'; Bpm = '178'; Expected = '176+ BPM' }
-        @{ Genre = 'DnB'; Bpm = '165'; Expected = '0-169 BPM' }
+    It 'makes BPM bands: <Genre> at <Bpm> -> <Expected>' -TestCases @(
+        @{ Genre = 'Tech House'; Bpm = '126'; Expected = '125-129 BPM' }
         @{ Genre = 'House'; Bpm = '124'; Expected = '120-124 BPM' }
+        @{ Genre = 'House'; Bpm = '64'; Expected = '125-129 BPM' }
         @{ Genre = 'House'; Bpm = ''; Expected = 'No BPM' }
     ) {
         Get-BpmLabel $Bpm $Genre | Should -Be $Expected
     }
 
+    It 'uses custom BPM groups for a family: <Bpm> -> <Expected>' -TestCases @(
+        @{ Bpm = '118'; Expected = '0-119 BPM' }
+        @{ Bpm = '124'; Expected = '120-125 BPM' }
+        @{ Bpm = '128'; Expected = '126-129 BPM' }
+        @{ Bpm = '132'; Expected = '130+ BPM' }
+    ) {
+        $script:Settings.BpmGroups['House'] = '120,126,130'
+        Get-BpmLabel $Bpm 'Tech House' | Should -Be $Expected
+    }
+
     It 'builds the default one-level folder' {
-        $item = [pscustomobject]@{ Genre = 'Liquid DnB'; BPM = '174'; Camelot = '8A' }
-        Get-TargetFolder $item | Should -Be 'Liquid DnB\170-175 BPM - Keys 07-09'
+        $item = [pscustomobject]@{ Genre = 'Tech House'; BPM = '126'; Camelot = '8A' }
+        Get-TargetFolder $item | Should -Be 'Tech House\125-129 BPM - Keys 07-09'
     }
     It 'uses the family folder at the Broad detail level' {
         $script:Settings.DetailLevel = 'Broad'
-        $item = [pscustomobject]@{ Genre = 'Liquid DnB'; BPM = '174'; Camelot = '8A' }
-        Get-TargetFolder $item | Should -Be 'DnB\170-175 BPM - Keys 07-09'
+        $item = [pscustomobject]@{ Genre = 'Tech House'; BPM = '126'; Camelot = '8A' }
+        Get-TargetFolder $item | Should -Be 'House\125-129 BPM - Keys 07-09'
     }
     It 'builds two levels for GenreBpmKey' {
         $script:Settings.FolderLayout = 'GenreBpmKey'
-        $item = [pscustomobject]@{ Genre = 'Neurofunk'; BPM = '174'; Camelot = '2A' }
-        Get-TargetFolder $item | Should -Be 'Neurofunk\170-175 BPM\Keys 01-03'
+        $item = [pscustomobject]@{ Genre = 'Techno'; BPM = '132'; Camelot = '2A' }
+        Get-TargetFolder $item | Should -Be 'Techno\130-134 BPM\Keys 01-03'
     }
     It 'sends tracks without a genre to _Review' {
-        Get-TargetFolder ([pscustomobject]@{ Genre = ''; BPM = '174'; Camelot = '8A' }) | Should -Be '_Review'
+        Get-TargetFolder ([pscustomobject]@{ Genre = ''; BPM = '126'; Camelot = '8A' }) | Should -Be '_Review'
     }
 }
 
 Describe 'File names and search terms' {
     It 'reads "01 Artist - Title"' {
-        $f = Get-NameFromFile 'C:\Music\01 Netsky - Rio.mp3'
-        $f.Artist | Should -Be 'Netsky'
-        $f.Title | Should -Be 'Rio'
+        $f = Get-NameFromFile 'C:\Music\01 Some Artist - Some Track.mp3'
+        $f.Artist | Should -Be 'Some Artist'
+        $f.Title | Should -Be 'Some Track'
     }
-    It 'turns a web-rip file name into a slug' {
-        $f = Get-NameFromFile 'C:\Music\ytmp3free.cc_acray-bad-boy-cray-tunez-youtubemp3free.org.mp3'
-        $f.Slug | Should -Be 'acray bad boy cray tunez'
+    It 'removes download-site names and turns the rest into a slug' {
+        $f = Get-NameFromFile 'C:\Music\somesite.cc_artist-bad-boy-track-name-othersite.org.mp3'
+        $f.Slug | Should -Be 'artist bad boy track name'
+    }
+    It 'keeps hyphenated words when removing a site name at the end' {
+        (Get-NameFromFile 'C:\Music\Some Artist - Big Room-Anthem-site.com.mp3').Title | Should -Be 'Big Room-Anthem'
     }
     It 'drops "(Official Video)" from file names' {
         (Get-NameFromFile 'C:\Music\Artist - Title (Official Video).mp3').Title | Should -Be 'Title'
     }
     It 'drops "(Original Mix)" and finds remixers' {
-        (New-Terms 'Netsky' 'Rio (Original Mix)' 'Tags').Title | Should -Be 'Rio'
-        $t = New-Terms 'Netsky' 'Rio (Camo & Krooked Remix)' 'Tags'
-        $t.Title | Should -Be 'Rio'
-        $t.Remixer | Should -Be 'Camo & Krooked'
+        (New-Terms 'Artist' 'Track (Original Mix)' 'Tags').Title | Should -Be 'Track'
+        $t = New-Terms 'Artist' 'Track (Other Artist Remix)' 'Tags'
+        $t.Title | Should -Be 'Track'
+        $t.Remixer | Should -Be 'Other Artist'
     }
     It 'keeps meaningful brackets' {
         (New-Terms 'ATB' '9 PM (Till I Come)' 'Tags').Title | Should -Be '9 PM (Till I Come)'
     }
     It 'ignores a channel name in the Artist field' {
-        $t = Get-SearchTerms 'DnB Allstars' 'Gino - Du Du Du'
-        $t.Artist | Should -Be 'Gino'
-        $t.Title | Should -Be 'Du Du Du'
+        $t = Get-SearchTerms 'Proximity' 'Some Artist - Some Track'
+        $t.Artist | Should -Be 'Some Artist'
+        $t.Title | Should -Be 'Some Track'
     }
     It 'removes " - Topic" from YouTube artist channels' {
         (Get-SearchTerms 'ATB - Topic' '9 PM (Till I Come)').Artist | Should -Be 'ATB'
@@ -193,14 +203,14 @@ Describe 'Small helpers' {
         Get-Norm "R$([char]0x00F6)yksopp & Robyn" | Should -Be 'royksopp and robyn'   # o with umlaut
     }
     It 'shortens very long file names but keeps the extension' {
-        $p = Get-ShortPath 'C:\Music\Organized Music\DnB' (('x' * 300) + '.mp3')
+        $p = Get-ShortPath 'C:\Music\Organized Music\Techno' (('x' * 300) + '.mp3')
         $p.Length | Should -BeLessOrEqual 250
         $p | Should -Match '\.mp3$'
     }
     It 'keeps raw tags through the cache' {
-        $res = [pscustomobject]@{ Tags = @([pscustomobject]@{ Name = 'liquid funk'; Weight = 3 }); Evidence = 'test' }
+        $res = [pscustomobject]@{ Tags = @([pscustomobject]@{ Name = 'minimal techno'; Weight = 3 }); Evidence = 'test' }
         $back = ConvertFrom-CacheText (ConvertTo-CacheText $res)
-        $back.Tags[0].Name | Should -Be 'liquid funk'
+        $back.Tags[0].Name | Should -Be 'minimal techno'
         $back.Tags[0].Weight | Should -Be 3
         $back.Evidence | Should -Be 'test'
     }
@@ -209,5 +219,61 @@ Describe 'Small helpers' {
         Export-SafeCsv ([pscustomobject]@{ Title = '=HYPERLINK("x")' }) $path
         (Get-Content -LiteralPath $path -Raw) | Should -Match "'=HYPERLINK"
         (Import-SafeCsv $path)[0].Title | Should -Be '=HYPERLINK("x")'
+    }
+}
+
+Describe 'Rekordbox playlists' {
+    BeforeAll {
+        $xmlText = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<DJ_PLAYLISTS Version="1.0.0">
+  <COLLECTION Entries="3">
+    <TRACK TrackID="1" Name="One" Artist="A" Location="file://localhost/C:/Music/one.mp3"/>
+    <TRACK TrackID="2" Name="Two" Artist="B" Location="file://localhost/C:/Music/two.mp3"/>
+    <TRACK TrackID="3" Name="Three" Artist="C" Location="file://localhost/C:/Music/three.mp3"/>
+  </COLLECTION>
+  <PLAYLISTS>
+    <NODE Type="0" Name="ROOT" Count="2">
+      <NODE Name="#latestmix" Type="1" KeyType="0" Entries="2">
+        <TRACK Key="1"/>
+        <TRACK Key="2"/>
+      </NODE>
+      <NODE Type="0" Name="Gigs" Count="1">
+        <NODE Name="Warmup" Type="1" KeyType="1" Entries="1">
+          <TRACK Key="file://localhost/C:/Music/three.mp3"/>
+        </NODE>
+      </NODE>
+    </NODE>
+  </PLAYLISTS>
+</DJ_PLAYLISTS>
+'@
+        $script:testXml = [xml]$xmlText
+        $script:testXmlPath = Join-Path $TestDrive 'export.xml'
+        Set-Content -LiteralPath $script:testXmlPath -Value $xmlText -Encoding UTF8
+    }
+
+    It 'reads the playlist tree with folders' {
+        $tree = @(Get-RekordboxPlaylists $script:testXml)
+        @($tree | Where-Object { -not $_.IsFolder }).Count | Should -Be 2
+        ($tree | Where-Object { $_.Name -eq 'Warmup' }).Path | Should -Be 'Gigs/Warmup'
+        ($tree | Where-Object { $_.Name -eq '#latestmix' }).Keys.Count | Should -Be 2
+    }
+    It 'finds playlists by name or folder path' {
+        $tree = @(Get-RekordboxPlaylists $script:testXml)
+        (Find-PlaylistsByName $tree @('#latestmix')).Path | Should -Be '#latestmix'
+        (Find-PlaylistsByName $tree @('Gigs/Warmup')).Name | Should -Be 'Warmup'
+        (Find-PlaylistsByName $tree @('warmup')).Path | Should -Be 'Gigs/Warmup'
+    }
+    It 'stops with a clear message for an unknown playlist' {
+        $tree = @(Get-RekordboxPlaylists $script:testXml)
+        { Find-PlaylistsByName $tree @('Nope') } | Should -Throw '*Nope*'
+    }
+    It 'reads the track count from the start of the file' {
+        Get-XmlTrackCount $script:testXmlPath | Should -Be 3
+    }
+    It 'reads tracks with Windows paths' {
+        $tracks = @(Get-TracksFromRekordboxXml $script:testXml)
+        $tracks.Count | Should -Be 3
+        $tracks[0].SourcePath | Should -Be 'C:\Music\one.mp3'
     }
 }
