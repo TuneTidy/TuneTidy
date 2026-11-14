@@ -1,0 +1,466 @@
+{
+  "RulesVersion": 1,
+  "Help": "Genres are checked from top to bottom; the first pattern that fits a tag wins. Patterns are regular expressions checked against the tag in lower case, with '&' written as 'and'. Family groups subgenres (used by the 'Broad' detail level, BPM folders and BPM checks). Bpm: accepted ranges such as '155-190,77-95'; the first range is the main tempo. Ignored: junk tags that are never used. Declined: genres TuneTidy should not suggest adding again.",
+  "Genres": [
+    {
+      "Name": "Neurofunk",
+      "Family": "DnB",
+      "Patterns": [
+        "neuro ?funk",
+        "techstep"
+      ],
+      "Aliases": [
+        "neuro",
+        "neuro dnb",
+        "neurofunk drum and bass"
+      ],
+      "Bpm": ""
+    },
+    {
+      "Name": "Jump Up",
+      "Family": "DnB",
+      "Patterns": [
+        "jump ?up"
+      ],
+      "Aliases": [
+        "jumpup",
+        "jump up dnb",
+        "jump up drum and bass"
+      ],
+      "Bpm": ""
+    },
+    {
+      "Name": "Liquid DnB",
+      "Family": "DnB",
+      "Patterns": [
+        "\\bliquid\\b"
+      ],
+      "Aliases": [
+        "liquid",
+        "liquid funk",
+        "liquid dnb",
+        "liquid drum and bass",
+        "liquid d and b"
+      ],
+      "Bpm": ""
+    },
+    {
+      "Name": "Jungle",
+      "Family": "DnB",
+      "Patterns": [
+        "\\bjungle\\b"
+      ],
+      "Aliases": [
+        "ragga jungle"
+      ],
+      "Bpm": ""
+    },
+    {
+      "Name": "Halftime",
+      "Family": "DnB",
+      "Patterns": [
+        "half ?time"
+      ],
+      "Aliases": [
+        "halftime dnb"
+      ],
+      "Bpm": "75-95,150-180"
+    },
+    {
+      "Name": "DnB",
+      "Family": "DnB",
+      "Patterns": [
+        "drum ?(and|n) ?bass",
+        "\\bdnb\\b",
+        "\\bd (and|n) b\\b"
+      ],
+      "Aliases": [
+        "drum and bass",
+        "drum n bass",
+        "drumandbass",
+        "drumnbass",
+        "dnb",
+        "d and b",
+        "d n b"
+      ],
+      "Bpm": "155-190,77-95"
+    },
+    {
+      "Name": "Riddim",
+      "Family": "Dubstep",
+      "Patterns": [
+        "\\briddim\\b"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Dubstep",
+      "Family": "Dubstep",
+      "Patterns": [
+        "dubstep",
+        "brostep"
+      ],
+      "Aliases": [
+        "brostep"
+      ],
+      "Bpm": "135-152,67-76"
+    },
+    {
+      "Name": "Hardcore",
+      "Family": "Hardcore",
+      "Patterns": [
+        "happy hardcore",
+        "uk hardcore",
+        "gabber",
+        "hardcore techno",
+        "frenchcore"
+      ],
+      "Aliases": [],
+      "Bpm": "160-220"
+    },
+    {
+      "Name": "Hardstyle",
+      "Family": "Hardstyle",
+      "Patterns": [
+        "hardstyle",
+        "rawstyle",
+        "hard dance"
+      ],
+      "Aliases": [],
+      "Bpm": "140-165"
+    },
+    {
+      "Name": "Bass House",
+      "Family": "House",
+      "Patterns": [
+        "bass house"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Tech House",
+      "Family": "House",
+      "Patterns": [
+        "tech house"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Deep House",
+      "Family": "House",
+      "Patterns": [
+        "deep house"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Progressive House",
+      "Family": "House",
+      "Patterns": [
+        "progressive house"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Afro House",
+      "Family": "House",
+      "Patterns": [
+        "afro house"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "House",
+      "Family": "House",
+      "Patterns": [
+        "\\bhouse\\b"
+      ],
+      "Aliases": [],
+      "Bpm": "110-135"
+    },
+    {
+      "Name": "Hard Techno",
+      "Family": "Techno",
+      "Patterns": [
+        "hard techno"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Melodic Techno",
+      "Family": "Techno",
+      "Patterns": [
+        "melodic techno"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Techno",
+      "Family": "Techno",
+      "Patterns": [
+        "techno"
+      ],
+      "Aliases": [],
+      "Bpm": "115-160"
+    },
+    {
+      "Name": "Psytrance",
+      "Family": "Trance",
+      "Patterns": [
+        "psy ?trance",
+        "\\bgoa\\b"
+      ],
+      "Aliases": [
+        "psy",
+        "goa trance"
+      ],
+      "Bpm": ""
+    },
+    {
+      "Name": "Trance",
+      "Family": "Trance",
+      "Patterns": [
+        "trance"
+      ],
+      "Aliases": [],
+      "Bpm": "120-150"
+    },
+    {
+      "Name": "UK Garage",
+      "Family": "UK Garage",
+      "Patterns": [
+        "uk garage",
+        "\\bukg\\b",
+        "\\b2 ?step\\b",
+        "speed garage",
+        "\\bgarage\\b(?! rock)"
+      ],
+      "Aliases": [
+        "garage",
+        "ukg",
+        "2 step",
+        "2step"
+      ],
+      "Bpm": "125-142"
+    },
+    {
+      "Name": "Grime",
+      "Family": "Grime",
+      "Patterns": [
+        "\\bgrime\\b"
+      ],
+      "Aliases": [],
+      "Bpm": "135-145"
+    },
+    {
+      "Name": "Breaks",
+      "Family": "Breaks",
+      "Patterns": [
+        "breakbeat",
+        "\\bbreaks\\b",
+        "big beat"
+      ],
+      "Aliases": [
+        "breakbeat"
+      ],
+      "Bpm": "95-145"
+    },
+    {
+      "Name": "Trap",
+      "Family": "Trap",
+      "Patterns": [
+        "\\btrap\\b"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Hip Hop",
+      "Family": "Hip Hop",
+      "Patterns": [
+        "hip ?hop",
+        "\\brap\\b",
+        "boom ?bap"
+      ],
+      "Aliases": [
+        "hiphop",
+        "rap"
+      ],
+      "Bpm": ""
+    },
+    {
+      "Name": "R&B",
+      "Family": "R&B",
+      "Patterns": [
+        "\\br (and|n) b\\b",
+        "\\brnb\\b",
+        "rhythm and blues"
+      ],
+      "Aliases": [
+        "rnb",
+        "r and b"
+      ],
+      "Bpm": ""
+    },
+    {
+      "Name": "Downtempo",
+      "Family": "Downtempo",
+      "Patterns": [
+        "downtempo",
+        "chill ?out",
+        "trip ?hop",
+        "\\blo ?fi\\b",
+        "chillhop"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Ambient",
+      "Family": "Ambient",
+      "Patterns": [
+        "ambient"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Nu Disco",
+      "Family": "Disco",
+      "Patterns": [
+        "nu ?disco"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Disco",
+      "Family": "Disco",
+      "Patterns": [
+        "disco"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Funk & Soul",
+      "Family": "Funk & Soul",
+      "Patterns": [
+        "\\bfunk\\b",
+        "\\bsoul\\b",
+        "motown"
+      ],
+      "Aliases": [
+        "funk",
+        "soul"
+      ],
+      "Bpm": ""
+    },
+    {
+      "Name": "Reggae",
+      "Family": "Reggae",
+      "Patterns": [
+        "reggae",
+        "dancehall",
+        "\\bdub\\b"
+      ],
+      "Aliases": [
+        "dub"
+      ],
+      "Bpm": ""
+    },
+    {
+      "Name": "Latin",
+      "Family": "Latin",
+      "Patterns": [
+        "latin",
+        "reggaeton",
+        "salsa",
+        "bachata",
+        "cumbia"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Pop",
+      "Family": "Pop",
+      "Patterns": [
+        "\\bpop\\b",
+        "synth ?pop",
+        "electropop",
+        "k ?pop"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Metal",
+      "Family": "Metal",
+      "Patterns": [
+        "metal"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Rock",
+      "Family": "Rock",
+      "Patterns": [
+        "\\brock\\b",
+        "punk",
+        "\\bindie\\b",
+        "grunge"
+      ],
+      "Aliases": [
+        "indie"
+      ],
+      "Bpm": ""
+    },
+    {
+      "Name": "Jazz",
+      "Family": "Jazz",
+      "Patterns": [
+        "jazz"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    },
+    {
+      "Name": "Classical",
+      "Family": "Classical",
+      "Patterns": [
+        "classical",
+        "orchestral",
+        "baroque"
+      ],
+      "Aliases": [],
+      "Bpm": ""
+    }
+  ],
+  "Ignored": [
+    "electronic",
+    "electronica",
+    "dance",
+    "edm",
+    "club",
+    "instrumental",
+    "experimental",
+    "bass",
+    "bass music",
+    "seen live",
+    "favorites",
+    "favourites",
+    "vocal",
+    "remix"
+  ],
+  "Declined": []
+}
